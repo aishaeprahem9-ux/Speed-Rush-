@@ -1,0 +1,150 @@
+let scene, camera, renderer;
+let car, obstacles = [], clouds = [];
+let score = 0, level = 1, speed = 0.5;
+let carColor = 0xff0000;
+const gameContainer = document.getElementById('game-container');
+const scoreDisplay = document.getElementById('score');
+const levelDisplay = document.getElementById('level');
+const startBtn = document.getElementById('start-btn');
+const colorBtns = document.querySelectorAll('.color-btn');
+const carSound = document.getElementById('car-sound');
+const crashSound = document.getElementById('crash-sound');
+const bgMusic = document.getElementById('bg-music');
+
+// اختيار لون السيارة
+colorBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+        carColor = parseInt(btn.getAttribute('data-color'));
+        if(car) car.material.color.setHex(carColor);
+    });
+});
+
+// بدء اللعبة
+startBtn.addEventListener('click', () => {
+    document.getElementById('start-screen').style.display = 'none';
+    initThreeJS();
+    carSound.loop = true;
+    carSound.play();
+    bgMusic.play();
+    animate();
+});
+
+function initThreeJS(){
+    scene = new THREE.Scene();
+
+    camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+    renderer = new THREE.WebGLRenderer({antialias:true});
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    gameContainer.appendChild(renderer.domElement);
+
+    // إضاءة
+    const light = new THREE.DirectionalLight(0xffffff,1);
+    light.position.set(0,50,50);
+    scene.add(light);
+
+    const ambient = new THREE.AmbientLight(0x555555);
+    scene.add(ambient);
+
+    // السماء
+    const skyGeo = new THREE.SphereGeometry(500,32,32);
+    const skyMat = new THREE.MeshBasicMaterial({ color:0x000033, side:THREE.BackSide });
+    const sky = new THREE.Mesh(skyGeo,skyMat);
+    scene.add(sky);
+
+    // الغيوم
+    const cloudGeo = new THREE.SphereGeometry(5,32,32);
+    const cloudMat = new THREE.MeshBasicMaterial({color:0xffffff, transparent:true, opacity:0.3});
+    for(let i=0;i<25;i++){
+        let cloud = new THREE.Mesh(cloudGeo, cloudMat);
+        cloud.position.set((Math.random()*200)-100, Math.random()*20+10, (Math.random()*-500));
+        cloud.scale.set(Math.random()*3+1, Math.random()*1.5+0.5, Math.random()*3+1);
+        scene.add(cloud);
+        clouds.push(cloud);
+    }
+
+    // الطريق
+    const geometry = new THREE.PlaneGeometry(20,1000);
+    const material = new THREE.MeshPhongMaterial({color:0x222222});
+    const road = new THREE.Mesh(geometry, material);
+    road.rotation.x = -Math.PI/2;
+    road.position.z = -500;
+    scene.add(road);
+
+    // السيارة
+    const carGeo = new THREE.BoxGeometry(2,1,4);
+    const carMat = new THREE.MeshPhongMaterial({color: carColor});
+    car = new THREE.Mesh(carGeo, carMat);
+    car.position.set(0,0.5,0);
+    scene.add(car);
+
+    camera.position.set(0,5,10);
+    camera.lookAt(car.position);
+
+    window.addEventListener('resize', onWindowResize);
+    document.addEventListener('keydown', moveCar);
+}
+
+function onWindowResize(){
+    camera.aspect = window.innerWidth/window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+}
+
+function moveCar(e){
+    if(!car) return;
+    if(e.key === 'ArrowLeft') car.position.x -= 1.5;
+    if(e.key === 'ArrowRight') car.position.x += 1.5;
+}
+
+function animate(){
+    requestAnimationFrame(animate);
+    renderer.render(scene, camera);
+
+    // تحريك الغيوم
+    clouds.forEach(cloud=>{
+        cloud.position.z += 0.5;
+        if(cloud.position.z > 10){
+            cloud.position.z = -500;
+            cloud.position.x = (Math.random()*200)-100;
+            cloud.position.y = Math.random()*20+10;
+        }
+    });
+
+    // تحديث النقاط والسرعة
+    score++;
+    speed = 0.5 + Math.min(score/1000, level); 
+    scoreDisplay.textContent = 'Score: '+score;
+    levelDisplay.textContent = 'Level: '+level;
+
+    // زيادة المستوى كل 2000 نقطة
+    if(score % 2000 === 0){
+        level++;
+    }
+
+    // إنشاء العوائق
+    if(Math.random() < 0.03 * level){
+        const obsGeo = new THREE.BoxGeometry(2,2,2);
+        const obsMat = new THREE.MeshPhongMaterial({color: Math.random()*0xffffff});
+        const obs = new THREE.Mesh(obsGeo, obsMat);
+        obs.position.set((Math.random()*8)-4,1, -50);
+        scene.add(obs);
+        obstacles.push(obs);
+    }
+
+    // تحريك العوائق والتحقق من التصادم
+    obstacles.forEach((obs,index)=>{
+        obs.position.z += speed;
+        if(obs.position.z > 5){
+            scene.remove(obs);
+            obstacles.splice(index,1);
+        }
+
+        if(Math.abs(obs.position.z - car.position.z)<2 && Math.abs(obs.position.x - car.position.x)<2){
+            crashSound.play();
+            carSound.pause();
+            bgMusic.pause();
+            alert('💥 Game Over! Score: '+score+' | Level: '+level);
+            location.reload();
+        }
+    });
+}
